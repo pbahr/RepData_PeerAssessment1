@@ -8,18 +8,146 @@ output:
 
 ## Loading and preprocessing the data
 
+First, we are going to unzip and read the data. Then, we convert date variable in to Date format.
 
+```{r}
+if (!file.exists("activity.csv"))
+    unzip("activity.zip")
+
+data <- read.csv("activity.csv")
+str(data)
+summary(data)
+
+# Pre-processed data
+data.prep <- data
+rm(data)
+
+# Reformat date variable
+data.prep$date <- as.Date(data.prep$date)
+str(data.prep)
+head(data.prep)
+
+# convert to tbl_df to use dplyr functions
+library(dplyr)
+data.prep <- tbl_df(data.prep)
+```
 
 ## What is mean total number of steps taken per day?
 
+First, we calculate the total number of steps taken per day.
+```{r}
+total.steps <- group_by(data.prep, date) %>%
+    summarize(steps= sum(steps, na.rm=T))
+```
 
+Next, we will plot the histogram of total steps taken per day.
+
+```{r}
+library(ggplot2)
+ggplot(data = total.steps, aes(x= steps)) +
+    geom_histogram(fill= "Blue", color="Black", binwidth= 1000) +
+    coord_cartesian(ylim = c(0, 12))
+```
+
+Next, we calculate **mean** and **median** steps taken per day.
+
+```{r}
+mean(total.steps$steps)
+median(total.steps$steps)
+```
 
 ## What is the average daily activity pattern?
 
+```{r}
+interval.steps <- group_by(data.prep, interval) %>%
+    summarize(mean= mean(steps, na.rm= T))
 
+ggplot(interval.steps, aes(x= interval, y= mean)) +
+           geom_line()
+```
+
+We would like to know which interval has the maximum number of steps taken, on average.
+```{r}
+interval.steps[which.max(interval.steps$mean),]
+```
 
 ## Imputing missing values
 
+First, let's see how many rows have missing values.
 
+```{r}
+summary(data.prep)
+```
+
+As we can see in the results of *summary()* function, **data** column and **interval** column don't have any missing values, but **steps** column has `r sum(is.na(data.prep$steps))` missing values.
+
+To impute the missing values, we first need to determine the nature of the missingness.
+
+```{r}
+tapply(data.prep$steps, data.prep$date, function(x) {
+    sum(is.na(x))
+})
+
+tapply(data.prep$steps, data.prep$interval, function(x) {
+    sum(is.na(x))
+})
+```
+
+Since the missing values are concentrated in some specific dates, and since the activity levels tend to be different during different times of the day, I would go with the **mean** activity level across **all** the remaining days during that specific **interval** as the imputed values.
+
+```{r}
+# get mean steps count for the same interval, where steps are valid
+mean.steps <- filter(data.prep, !is.na(steps)) %>%
+    group_by(interval) %>%
+    summarize(mean= mean(steps))
+
+# data set to contain original and imputed values
+data.imputed <- data.prep
+
+# where are the missing values
+missing <- which(is.na(data.imputed$steps))
+
+# get mean steps count for a specific interval
+get.mean <- function(x) {
+    mean.steps$mean[mean.steps$interval == x]
+}
+
+data.imputed$steps[missing] <- sapply(data.imputed$interval[missing], get.mean)
+```
+
+Now, we re-create the histogram of number of steps taken per day, with imputed data.
+```{r}
+total.steps.imputed <- group_by(data.imputed, date) %>%
+    summarize(steps= sum(steps))
+
+ggplot(total.steps.imputed, aes(x= steps)) +
+    geom_histogram(fill="blue", color="black", binwidth= 1000)
+```
+
+Now, we can compare mean and media steps taken per day, before and after imputing data. **Before** imputing data:
+```{r}
+mean(total.steps$steps)
+median(total.steps$steps)
+```
+
+**After** imputing missing data:
+```{r}
+mean(total.steps.imputed$steps)
+median(total.steps.imputed$steps)
+```
+
+Both mean and median are increased, with mean increasing more.
 
 ## Are there differences in activity patterns between weekdays and weekends?
+
+Let's take a look at difference in activity levels during weekdays vs. weekends.
+```{r}
+data.imputed <- mutate(data.imputed, weekday= factor(ifelse(weekdays(date) %in% c("Saturday", "Sunday"), "weekend", "weekday")))
+
+ggplot(data.imputed, aes(x= interval, y=steps)) +
+    stat_summary(geom="line", fun.y= mean) +
+    #geom_line() +
+    facet_wrap(~weekday, nrow = 2)
+```
+
+In the weekends, activities start later and have lower maximum and finish later, on average. But, in general this individual looks more active during the weekends.
