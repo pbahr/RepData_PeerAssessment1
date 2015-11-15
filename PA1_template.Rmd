@@ -8,7 +8,7 @@ output:
 
 ## Loading and preprocessing the data
 
-First, we are going to unzip and read the data. Then, we convert date variable in to Date format.
+First, we are going to unzip and read the data. Then, we convert date variable into Date format.
 
 ```{r}
 if (!file.exists("activity.csv"))
@@ -38,6 +38,7 @@ First, we calculate the total number of steps taken per day.
 ```{r}
 total.steps <- group_by(data.prep, date) %>%
     summarize(steps= sum(steps, na.rm=T))
+head(total.steps)
 ```
 
 Next, we will plot the histogram of total steps taken per day.
@@ -58,6 +59,8 @@ median(total.steps$steps)
 
 ## What is the average daily activity pattern?
 
+First, let's figure out the average number of steps taken during each interval.
+
 ```{r}
 interval.steps <- group_by(data.prep, interval) %>%
     summarize(mean= mean(steps, na.rm= T))
@@ -68,8 +71,16 @@ ggplot(interval.steps, aes(x= interval, y= mean)) +
 
 We would like to know which interval has the maximum number of steps taken, on average.
 ```{r}
-interval.steps[which.max(interval.steps$mean),]
+max.interval <- interval.steps[which.max(interval.steps$mean),]
+
+max.interval.time <- as.POSIXct("00:00:00", format="%H:%M:%S")
+max.interval.time <- max.interval.time + max.interval$interval
+max.interval.time <- as.POSIXlt(max.interval.time)
+strftime(max.interval.time, format="%M:%S")
+max.interval
 ```
+
+On average, the interval with the most activity is at 13:55 everyday, with 206 steps.
 
 ## Imputing missing values
 
@@ -84,13 +95,18 @@ As we can see in the results of *summary()* function, **data** column and **inte
 To impute the missing values, we first need to determine the nature of the missingness.
 
 ```{r}
-tapply(data.prep$steps, data.prep$date, function(x) {
-    sum(is.na(x))
-})
+daily.missing.steps <- group_by(data.prep, date) %>%
+    summarize(nas= sum(is.na(steps)))
 
-tapply(data.prep$steps, data.prep$interval, function(x) {
-    sum(is.na(x))
-})
+ggplot(daily.missing.steps, aes(x= date, y= nas)) +
+    geom_bar(stat = "identity", fill= "blue", color= "black")
+
+interval.missing.steps <- group_by(data.prep, interval) %>%
+    summarize(nas= sum(is.na(steps)))
+    
+ggplot(interval.missing.steps, aes(x= interval, y= nas)) +
+    geom_bar(stat = "identity", fill= "blue")
+
 ```
 
 Since the missing values are concentrated in some specific dates, and since the activity levels tend to be different during different times of the day, I would go with the **mean** activity level across **all** the remaining days during that specific **interval** as the imputed values.
@@ -136,7 +152,7 @@ mean(total.steps.imputed$steps)
 median(total.steps.imputed$steps)
 ```
 
-Both mean and median are increased, with mean increasing more.
+As the resut of imputation, both mean and median are increased, with mean increasing more.
 
 ## Are there differences in activity patterns between weekdays and weekends?
 
